@@ -53,6 +53,8 @@ jobs:
         go: ["1.26.5"]
     steps:
     - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+      with:
+        fetch-depth: 0
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version: ${{ matrix.go }}
@@ -66,5 +68,8 @@ jobs:
       run: docker pull "$(python3 -B tools/scripts/build_environment.py image)"
     - name: locked assembly into the workspace
       run: python3 -B tools/scripts/isolated_sync.py --engine docker --update-dependencies 1.36.3
-    - run: ./.prow.sh 2>&1
-    - run:  grep "Ginkgo ran" -B 4 .prow.sh.log
+    - name: run hostpath Prow suite
+      run: |
+        set -o pipefail
+        ./.prow.sh 2>&1 | tee .prow.sh.log
+    - run: grep "Ginkgo ran" -B 4 .prow.sh.log
