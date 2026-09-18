@@ -1,6 +1,6 @@
 # kubernetes-csi
 
-A consolidated monorepo for Kubernetes CSI utility components, including sidecars (attacher, provisioner, resizer, snapshotter, livenessprobe, health-monitor), node-driver-registrar, volume-data-source-validator, the snapshot-controller and VolumeSnapshot CRDs.
+An experimental assembly of the Kubernetes CSI attacher, provisioner, resizer, and snapshotter sidecars, with standalone snapshot controller and conversion webhook images.
 
 ## What this repository builds
 

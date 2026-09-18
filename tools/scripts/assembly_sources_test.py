@@ -147,34 +147,6 @@ class SourceLockTests(unittest.TestCase):
                 sources.checkout(fixture(), "attacher", destination)
             git.assert_not_called()
 
-    def test_candidate_resolves_channels_without_mutating_active_selection(self):
-        with tempfile.TemporaryDirectory() as directory:
-            channels = Path(directory) / "sidecars.conf"
-            channels.write_text("# metadata only\n" + "\n".join(f"{c},next" for c in sources.CONTROLLERS))
-            lock = fixture()
-            original = copy.deepcopy(lock)
-            with patch.object(sources, "git", side_effect=lambda *a, **kw: "b" * 40 + "\t" + a[-1]) as git:
-                result = sources.resolve_candidate(lock, channels)
-            self.assertEqual(lock, original)
-            self.assertEqual(git.call_count, 5)
-            self.assertEqual(result["sources"]["attacher"]["ref"], "refs/heads/next")
-            self.assertEqual(result["sources"]["csi-lib-utils"]["ref"], "refs/heads/master")
-            for source in result["sources"].values():
-                self.assertEqual(source["commit"], "b" * 40)
-            channels.write_text("attacher,--upload-pack=bad")
-            with patch.object(sources, "git") as git, self.assertRaises(ValueError):
-                sources.resolve_candidate(lock, channels)
-            git.assert_not_called()
-
-    def test_unresolved_or_ambiguous_channel_fails(self):
-        with tempfile.TemporaryDirectory() as directory:
-            channels = Path(directory) / "sidecars.conf"
-            channels.write_text("\n".join(f"{c},next" for c in sources.CONTROLLERS))
-            for result in ("", "a" * 40 + "\trefs/heads/wrong", "bad\trefs/heads/next",
-                           ("a" * 40 + "\trefs/heads/next\n") * 2):
-                with patch.object(sources, "git", return_value=result), self.assertRaises(ValueError):
-                    sources.resolve_candidate(fixture(), channels)
-
     def test_manifest_fingerprint_changes_with_one_source_only(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "lock.json"

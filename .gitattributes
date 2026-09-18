@@ -1,12 +1,9 @@
 # Mark auto-generated content so GitHub collapses it in PR reviews and excludes
 # it from language statistics (linguist-generated).
 
-# The reference sync log is tracked (linked from README) and is fully generated.
-tools/sync.log linguist-generated=true
-
-# Assembly area / synced upstream code. sync.sh produces these trees from the
-# upstream kubernetes-csi repositories; they are committed so a checkout builds
-# directly, and kept collapsed in diffs. sync.sh mirrors *every* non-test .go
+# Assembly area / synced upstream code. These rules keep generated content
+# collapsed if these currently ignored paths are committed in the future.
+# sync.sh mirrors *every* non-test .go
 # file from pkg/<sidecar>/cmd/csi-<sidecar>/ into cmd/csi-sidecars/, so match the
 # whole tree rather than the filenames that happen to exist today.
 pkg/**      linguist-generated=true

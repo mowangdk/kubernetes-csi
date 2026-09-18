@@ -70,7 +70,6 @@ default_kubelet_data_dir=/var/lib/kubelet
 # implies that refreshing that image has to be done manually.
 #
 # As a special case, 'none' as registry removes the registry name.
-# Set VOLUME_MODE_CONVERSION_TESTS to "true" to enable the feature in external-provisioner.
 
 # The default is to use the RBAC rules that match the image that is
 # being used, also in the case that the image gets overridden. This
@@ -137,10 +136,6 @@ function version_gt() {
     test "$(printf '%s' "$versions" | sort -V | head -n 1)" != "$greaterVersion"
 }
 
-function volume_mode_conversion () {
-    [ "${VOLUME_MODE_CONVERSION_TESTS}" == "true" ]
-}
-
 # In addition, the RBAC rules can be overridden separately.
 # For snapshotter 2.0+, the directory has changed.
 SNAPSHOTTER_RBAC_RELATIVE_PATH="rbac.yaml"
@@ -169,14 +164,6 @@ CSI_SNAPSHOTTER_RBAC_YAML="https://raw.githubusercontent.com/kubernetes-csi/exte
 
 CSI_EXTERNALHEALTH_MONITOR_RBAC_YAML="https://raw.githubusercontent.com/kubernetes-csi/external-health-monitor/$(rbac_version "${BASE_DIR}/hostpath/csi-hostpath-plugin.yaml" csi-external-health-monitor-controller false)/deploy/kubernetes/external-health-monitor-controller/rbac.yaml"
 : ${CSI_EXTERNALHEALTH_MONITOR_RBAC:=https://raw.githubusercontent.com/kubernetes-csi/external-health-monitor/$(rbac_version "${BASE_DIR}/hostpath/csi-hostpath-plugin.yaml" csi-external-health-monitor-controller "${UPDATE_RBAC_RULES}")/deploy/kubernetes/external-health-monitor-controller/rbac.yaml}
-
-INSTALL_CRD=${INSTALL_CRD:-"false"}
-
-# Some images are not affected by *_REGISTRY/*_TAG and IMAGE_* variables.
-# The default is to update unless explicitly excluded.
-update_image () {
-    case "$1" in socat) return 1;; esac
-}
 
 run () {
     echo "$@" >&2
@@ -219,15 +206,11 @@ done
 echo "deploying hostpath components"
 for i in $(ls ${BASE_DIR}/hostpath/*.yaml | sort); do
     echo "   $i"
-    if volume_mode_conversion; then
-      sed -i -e 's/# end csi-provisioner args/- \"--prevent-volume-mode-conversion=true\"\n            # end csi-provisioner args/' $i
-    fi
     modified="$(cat "$i" | sed -e "s;${default_kubelet_data_dir}/;${KUBELET_DATA_DIR}/;" | while IFS= read -r line; do
         nocomments="$(echo "$line" | sed -e 's/ *#.*$//')"
         # Preserve the locally built AIO image name used by Prow.
-        if echo "$nocomments" | grep -q '^[[:space:]]*image:[[:space:]]*csi-sidecars'; then
-          :
-        elif echo "$nocomments" | grep -q '^[[:space:]]*image:[[:space:]]*'; then
+        if echo "$nocomments" | grep -q '^[[:space:]]*image:[[:space:]]*' &&
+           ! echo "$nocomments" | grep -q '^[[:space:]]*image:[[:space:]]*csi-sidecars'; then
             # Split 'image: quay.io/k8scsi/csi-attacher:v1.0.1'
             # into image (quay.io/k8scsi/csi-attacher:v1.0.1),
             # registry (quay.io/k8scsi),
@@ -241,22 +224,18 @@ for i in $(ls ${BASE_DIR}/hostpath/*.yaml | sort); do
             # Variables are with underscores and upper case.
             varname=$(echo $name | tr - _ | tr a-z A-Z)
 
-            # Now replace registry and/or tag, if set as env variables.
-            # If not set, the replacement is the same as the original value.
-            # Only do this for the images which are meant to be configurable.
-            if update_image "$name"; then
-                prefix=$(eval echo \${${varname}_REGISTRY:-${IMAGE_REGISTRY:-${registry}}}/ | sed -e 's;none/;;')
-                if [ "$IMAGE_TAG" = "canary" ] &&
-                   [ -f ${BASE_DIR}/canary-blacklist.txt ] &&
-                   grep -q "^$name\$" ${BASE_DIR}/canary-blacklist.txt; then
-                    # Ignore IMAGE_TAG=canary for this particular image because its
-                    # canary image is blacklisted in the deployment blacklist.
-                    suffix=$(eval echo :\${${varname}_TAG:-${tag}})
-                else
-                    suffix=$(eval echo :\${${varname}_TAG:-${IMAGE_TAG:-${tag}}})
-                fi
-                line="$(echo "$nocomments" | sed -e "s;$image;${prefix}${name}${suffix};")"
+            # Replace registry and/or tag when overrides are set.
+            prefix=$(eval echo \${${varname}_REGISTRY:-${IMAGE_REGISTRY:-${registry}}}/ | sed -e 's;none/;;')
+            if [ "$IMAGE_TAG" = "canary" ] &&
+               [ -f ${BASE_DIR}/canary-blacklist.txt ] &&
+               grep -q "^$name\$" ${BASE_DIR}/canary-blacklist.txt; then
+                # Ignore IMAGE_TAG=canary for this particular image because its
+                # canary image is blacklisted in the deployment blacklist.
+                suffix=$(eval echo :\${${varname}_TAG:-${tag}})
+            else
+                suffix=$(eval echo :\${${varname}_TAG:-${IMAGE_TAG:-${tag}}})
             fi
+            line="$(echo "$nocomments" | sed -e "s;$image;${prefix}${name}${suffix};")"
             echo "        using $line" >&2
         fi
         echo "$line"

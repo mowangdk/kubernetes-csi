@@ -27,43 +27,11 @@ fi
 
 # The script assembles the generated tree at the repository root; resolve it from
 # the script location so the sync can be started from any directory.
-SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 # shellcheck source=tools/scripts/retry-go-dependencies.sh
 source "${REPO_ROOT}/tools/scripts/retry-go-dependencies.sh"
-
-# ==============================================================================
-# DEVELOPER WORKSPACE PATH NORMALIZATION
-# ==============================================================================
-# When developers run this synchronization script locally, their terminal output
-# and the resulting 'tools/sync.log' file capture absolute file paths unique to
-# their specific machine/box (e.g., '/home/mauriciopoppe.linux' or '/root').
-#
-# Since 'tools/sync.log' is a tracked file in version control (linked by the
-# README.md as a reference log of a successful synchronization), these absolute
-# paths cause persistent git diff noise and merge conflicts whenever different
-# developers run the tooling.
-#
-# To solve this cleanly without manual post-processing, the block below intercepts
-# the script execution. If 'NORMALIZED_LOGGING' is not active, it re-executes the
-# script and filters all stdout and stderr in real-time through GNU 'sed'.
-# Any absolute path matching the current working directory ($PWD) or the user's
-# home directory ($HOME) is replaced with generic placeholders ('$WORKSPACE'
-# and '$HOME' respectively).
-#
-# Because 'set -o pipefail' is active (line 2), the exit status of the underlying
-# execution is correctly preserved and bubbled up to the caller (or CI runner).
-# ==============================================================================
-if [[ "${NORMALIZED_LOGGING:-}" != "true" ]]; then
-  export NORMALIZED_LOGGING=true
-  escaped_pwd=$(echo "$PWD" | sed 's/[.[\*^$]/\\&/g')
-  escaped_home=$(echo "$HOME" | sed 's/[.[\*^$]/\\&/g')
-  "${SCRIPT}" "$@" 2>&1 | sed -u -e "s|$escaped_pwd|\$WORKSPACE|g" -e "s|$escaped_home|\$HOME|g"
-  exit $?
-fi
-
 
 # Source locks never authorize reusing a previously transformed tree. Preflight
 # before installing tools, fetching sources, or changing generated inputs.
@@ -119,11 +87,9 @@ kubernetes-csi/external-* repositories. Do not edit its contents by hand; edit
 the source of truth under tools/ and re-run the sync. See CODE_LAYOUT.md.
 EOF
 
-# Initialize the target repo for merged commit history
-if [[ ! -d tmp/csi-sidecars ]]; then
-  mkdir -p tmp/csi-sidecars
-  (cd tmp/csi-sidecars && git init)
-fi
+# Initialize the target repo for merged commit history.
+mkdir tmp/csi-sidecars
+(cd tmp/csi-sidecars && git init)
 
 # symlink_from_root_to_tools creates a symlink in the assembly area (project root)
 # pointing at the hand-maintained source of truth under tools/.
@@ -163,8 +129,8 @@ add_generation_marker() {
   ' "${file}" >"${file}.marked" && mv "${file}.marked" "${file}"
 }
 
-# Branches in sidecars.conf are update metadata only. Ordinary assembly consumes
-# exact original commits and preserves a stable ref across history filtering.
+# Ordinary assembly consumes exact original commits and preserves a stable ref
+# across history filtering.
 SIDECAR_LIST=$(python3 tools/scripts/assembly_sources.py --lock "${SOURCE_LOCK}" controllers)
 for SIDECAR in ${SIDECAR_LIST}; do
     python3 tools/scripts/assembly_sources.py --lock "${SOURCE_LOCK}" checkout "${SIDECAR}" "tmp/external-${SIDECAR}"
@@ -205,7 +171,7 @@ commit.message = new_message.encode()
     ${TRASH} pkg/${SIDECAR}/.cloudbuild.sh
     ${TRASH} pkg/${SIDECAR}/cloudbuild.yaml
     ${TRASH} pkg/${SIDECAR}/.prow.sh
-    ${TRASH} pkg/${SIDECAR}/OWNER_ALIASES
+    ${TRASH} pkg/${SIDECAR}/OWNERS_ALIASES
     ${TRASH} pkg/${SIDECAR}/Makefile
 
     if [ "${SIDECAR}" = "snapshotter" ]; then
@@ -222,13 +188,7 @@ commit.message = new_message.encode()
       ${TRASH} pkg/${SIDECAR}/SECURITY_CONTACTS
       ${TRASH} pkg/${SIDECAR}/code-of-conduct.md
       ${TRASH} pkg/${SIDECAR}/CONTRIBUTING.md
-      ${TRASH} pkg/${SIDECAR}/OWNERS_ALIASES
     fi
-
-    (
-      cd pkg/${SIDECAR}
-      find . -type f -exec grep -q "github.com/kubernetes-csi/external-${SIDECAR}/" --files-with-matches {} \; -print
-    )
 
     (
       cd pkg/${SIDECAR}
@@ -434,10 +394,6 @@ export GOWORK="${REPO_ROOT}/go.work"
 
 retry_go_dependencies go work vendor
 export GOFLAGS="-mod=vendor"
-
-# Echo each checkpoint command before running it so every step is visible in
-# the log.
-set -x
 
 # checkpoint: run the tooling unit tests (flag registration + AIO entrypoint
 # helpers). These only exist after the symlinks above are in place and the

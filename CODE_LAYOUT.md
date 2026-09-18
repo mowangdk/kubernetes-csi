@@ -31,10 +31,7 @@ tools/
 │   ├── retry-go-dependencies.sh     # bounded Go dependency transport retries
 │   ├── retry_go_dependencies_test.py # retry and checksum-safety regression tests
 │   ├── verify_artifacts.py         # README CLI and image packaging smoke checks
-│   ├── verify_artifacts_test.py    # verifier regression tests
-│   └── sidecars.conf               # list of sidecars to sync (<sidecar>,<branch>)
-├── csi-release-tools-hashes.txt
-├── sync.log                        # reference log of a successful sync (generated, tracked)
+│   └── verify_artifacts_test.py    # verifier regression tests
 └── README.md
 ```
 
@@ -88,5 +85,5 @@ Makefile shortcuts: `make sync KUBERNETES=1.MINOR.PATCH` runs
 `tools/scripts/sync.sh --update-dependencies`, and `make clean` extends the
 release-tools `clean` (removes `bin/`) with `tools/scripts/cleanup.sh`.
 
-To change which sidecars are synced or from which branch, edit
-`tools/scripts/sidecars.conf`.
+To update an upstream source, change its exact `ref` and `commit` in
+`tools/assembly/sources.lock.json`, then regenerate and verify the assembly.

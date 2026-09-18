@@ -139,34 +139,6 @@ def checkout(lock, name, destination):
     print(f"{name}: {source['repository']} @ {actual}")
 
 
-def resolve_candidate(lock, channels):
-    """Resolve update channels only; the caller must validate before exporting."""
-    candidate = json.loads(encoded(lock))
-    refs = {}
-    for line in Path(channels).read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        fields = line.split(",")
-        if len(fields) != 2 or fields[0] not in CONTROLLERS or fields[0] in refs:
-            raise ValueError(f"invalid/duplicate sidecar update channel: {line}")
-        refs[fields[0]] = "refs/heads/" + fields[1]
-    if set(refs) != set(CONTROLLERS):
-        raise ValueError("update channels must include all four controllers")
-    refs["csi-lib-utils"] = candidate["sources"]["csi-lib-utils"]["ref"]
-    for name, ref in refs.items():
-        candidate["sources"][name]["ref"] = ref
-    validate(candidate)  # Reject unsafe/ambiguous ref syntax before network access.
-    for name in REPOSITORIES:
-        source = candidate["sources"][name]
-        result = git("ls-remote", "--exit-code", source["repository"], source["ref"])
-        matches = [line.split() for line in result.splitlines()]
-        if len(matches) != 1 or len(matches[0]) != 2 or matches[0][1] != source["ref"]:
-            raise ValueError(f"{name}: update ref did not resolve uniquely")
-        source["commit"] = matches[0][0]
-    return validate(candidate)
-
-
 def manifest(path):
     data = Path(path).read_bytes()
     lock = validate(json.loads(data, object_pairs_hook=unique_object))

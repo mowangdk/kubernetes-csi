@@ -29,7 +29,7 @@ sync is not a step of every build.
 | `scripts/verify_artifacts.py` | Checks README CLI arguments and packaged image executables/entrypoints/help. |
 | `scripts/verify_artifacts_test.py` | Regression tests for the artifact verifier; no assembly or container engine required. |
 | `scripts/assembly_sources.py` | Source-lock validation and exact single-commit checkout of each upstream input. |
-| `scripts/assembly_sources_test.py` | Malformed-lock, stale-output, exact-history import, and update-channel fixtures. |
+| `scripts/assembly_sources_test.py` | Malformed-lock, stale-output, exact-history import, and provenance fixtures. |
 | `scripts/assembly_dependencies.py` | Generates `go.mod`/`go.work` from the original sources, aligning the Kubernetes family on the selected release. |
 | `scripts/assembly_dependencies_test.py` | go.mod/go.work generation, family alignment, and real Go parser fixtures. |
 | `scripts/build_environment.py` | Locked builder-image selection, tool preflight, and fresh hash-verified Python bootstrap. |
@@ -39,9 +39,6 @@ sync is not a step of every build.
 | `assembly/sources.lock.json` | Exact original revisions and repository identities for all five source inputs. |
 | `assembly/build-environment.lock.json` | Per-architecture builder digests, exact tool versions, and Python wheel URLs/hashes. |
 | `assembly/images.lock.json` | Shared runtime index/platform digests and explicitly selected legacy Kubernetes test images. |
-| `scripts/sidecars.conf` | Update-channel metadata, one `<sidecar>,<branch>` per line; not consumed by normal sync. |
-| `csi-release-tools-hashes.txt` | Historical upstream hash list. |
-| `sync.log` | Reference log of a successful sync (tracked, generated). |
 
 ## Usage
 
@@ -76,10 +73,9 @@ release passed via `--update-dependencies`, then runs `go mod tidy` and
 
 ## Updating source revisions
 
-All four independent upstream controllers remain present. To change their update
-channels, edit `scripts/sidecars.conf` and update `assembly/sources.lock.json`
-to the exact commits to sync. Normal sync consumes that lock directly; the branch
-names in `sidecars.conf` are update metadata only.
+All four independent upstream controllers remain present. Update each source's
+`ref` and exact `commit` in `assembly/sources.lock.json`; normal sync consumes
+that lock directly and never resolves moving branches.
 
 The source lock targets Kubernetes 1.36.3, with staging modules aligned at
 0.36.3. `assembly_dependencies.py seed` reads the original component
