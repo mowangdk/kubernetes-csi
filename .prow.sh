@@ -6,7 +6,7 @@ export PULL_BASE_REF=master
 export REGISTRY_NAME=ghcr.io/mauriciopoppe/csi-sidecars-aio-poc
 
 HW_ARCH=$(uname -m)
-if [[ "${HW_ARCH}" == "aarch64" ]]; then
+if [[ "${HW_ARCH}" == "aarch64" || "${HW_ARCH}" == "arm64" ]]; then
   export CSI_PROW_BUILD_PLATFORMS="linux arm64 arm64"
 elif [[ "${HW_ARCH}" == "x86_64" ]]; then
   export CSI_PROW_BUILD_PLATFORMS="linux amd64 amd64"
@@ -14,6 +14,9 @@ else
   echo "Unsupported hardware arch $HW_ARCH"
   exit 1
 fi
+# release-tools does not pass BUILD_PLATFORMS to its separate container build.
+BUILD_PLATFORMS_MAKEFLAGS=${CSI_PROW_BUILD_PLATFORMS// /\\ }
+export MAKEFLAGS="${MAKEFLAGS:+${MAKEFLAGS} }BUILD_PLATFORMS=${BUILD_PLATFORMS_MAKEFLAGS}"
 
 # Taken from https://github.com/kubernetes/test-infra/blob/d51e148c34558d18b492a52bdb3e4a0e84492359/config/jobs/kubernetes-csi/external-attacher/external-attacher-config.yaml#L131
 export CSI_PROW_GO_VERSION_BUILD="1.26.5"
@@ -41,8 +44,10 @@ export CSI_PROW_TESTS="unit sanity parallel serial"
 export CSI_PROW_TESTS_SANITY="sanity"
 
 # release-tools verifies vendoring with go mod vendor, which requires module mode.
-export GOWORK=off
-go mod vendor
+if [ -f go.mod ]; then
+  export GOWORK=off
+  go mod vendor
+fi
 
 . release-tools/prow.sh
 
