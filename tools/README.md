@@ -12,33 +12,60 @@ sync is not a step of every build.
 
 ## Contents
 
+The directory is organized by area: the hand-maintained **entrypoints** (the
+AIO `cmd/` and the `pkg/` attacher override), the **scripts** that assemble and
+verify the generated tree, and the **lock files** those scripts consume. Each
+area pairs its source with its co-located regression tests.
+
+### AIO entrypoint (`cmd/`)
+
+The unified `csi-sidecars` process and its flag registration — the hand-written
+code the assembled tree builds against via symlinks.
+
 | Path | Purpose |
 |------|---------|
 | `cmd/csi-sidecars/main.go` | AIO unified entry point; dispatches to each sidecar's `<sidecar>_main`. |
 | `cmd/csi-sidecars/main_test.go` | Tests for `parseControllers` and the config→global-var mapping. |
 | `cmd/csi-sidecars/config/flags.go` | AIO + snapshotter flag registration. |
 | `cmd/csi-sidecars/config/flags_test.go` | Flag-registration regression tests. |
+
+### Attacher override (`pkg/`)
+
+The individual attacher entrypoint retained to prove the assembled packages
+still support a standalone binary in addition to AIO.
+
+| Path | Purpose |
+|------|---------|
 | `pkg/attacher/cmd/csi-attacher/main.go` | Individual attacher entrypoint retained to verify AIO/standalone compatibility against the assembled packages. |
 | `pkg/attacher/cmd/csi-attacher/config/flags.go` | Attacher flag registration (prefixed + unprefixed). |
 | `pkg/attacher/cmd/csi-attacher/config/flags_test.go` | Equivalent defaults and field mappings for prefixed AIO and unprefixed individual flags. |
-| `scripts/sync.sh` | Clones upstream `external-*`, rewrites imports, generates the root `go.mod`, and runs module-mode tidy/vendor. |
+
+### Assembly scripts (`scripts/`)
+
+The tooling that turns locked upstream sources into the generated tree, plus the
+checks that validate the result. See [Validation strategy](#validation-strategy)
+for how these layers reinforce each other.
+
+| Path | Purpose |
+|------|---------|
+| `scripts/sync.sh` | Top-level sync entrypoint: clones upstream `external-*`, rewrites imports, generates the root `go.mod`, and runs module-mode tidy/vendor. |
 | `scripts/cleanup.sh` | Removes generated artifacts and `.assembly-env` (leaves `tools/` untouched). |
-| `scripts/assembly_lifecycle_test.py` | Offline regression tests for preflight ordering, repeated runs, environment cleanup, and failure recovery. |
 | `scripts/isolated_sync.py` | Runs `sync.sh` (or tooling checks) inside the locked Linux builder with the checkout mounted, regenerating the assembly area in place. |
-| `scripts/retry-go-dependencies.sh` | Bounded retries for transient Go dependency transport failures; preserves checksum verification. |
-| `scripts/retry_go_dependencies_test.py` | Regression tests for retry limits, exit status, and integrity failures. |
-| `scripts/verify_artifacts.py` | Checks AIO/individual entrypoint CLIs and packaged image executables/entrypoints/help. |
-| `scripts/verify_artifacts_test.py` | Regression tests for the artifact verifier; no assembly or container engine required. |
-| `scripts/makefile_test.py` | Formatting-gate coverage for maintained and assembled code, excluding retained upstream originals. |
-| `scripts/deploy_test.py` | Shared user/e2e RBAC and ServiceAccount, image override independence, and rollout regression tests with stubbed commands. |
 | `scripts/assembly_sources.py` | Source-lock validation and exact single-commit checkout of each upstream input. |
-| `scripts/assembly_sources_test.py` | Malformed-lock, stale-output, exact-history import, and provenance fixtures. |
 | `scripts/assembly_dependencies.py` | Generates the root `go.mod`, aligns the Kubernetes family, and resolves csi-lib-utils to its locked module revision. |
-| `scripts/assembly_dependencies_test.py` | Module generation, source-identity checks, version pinning despite transitive upgrades, vendoring, and workspace isolation. |
 | `scripts/build_environment.py` | Locked builder-image selection, tool preflight, and fresh hash-verified Python bootstrap. |
-| `scripts/build_environment_test.py` | Builder/version, wheel tampering, partial-install, and generator-integrity fixtures. |
 | `scripts/image_inputs.py` | Image-lock/Dockerfile checks, standalone Dockerfile generation, test-image selection, and explicit registry verification. |
-| `scripts/image_inputs_test.py` | Image/schema drift, filesystem safety, registry checksums/platforms, and harmless Prow-wrapper fixtures. |
+| `scripts/retry-go-dependencies.sh` | Bounded retries for transient Go dependency transport failures; preserves checksum verification. |
+| `scripts/verify_artifacts.py` | Checks AIO/individual entrypoint CLIs and packaged image executables/entrypoints/help. |
+| `scripts/*_test.py` | Co-located regression tests for each script above: `assembly_sources_test.py`, `assembly_dependencies_test.py`, `assembly_lifecycle_test.py`, `build_environment_test.py`, `deploy_test.py`, `image_inputs_test.py`, `isolated_sync_test.py`, `makefile_test.py`, `retry_go_dependencies_test.py`, `verify_artifacts_test.py`. |
+
+### Lock files (`assembly/`)
+
+The pinned inputs the scripts consume; sync never resolves moving branches or
+tags.
+
+| Path | Purpose |
+|------|---------|
 | `assembly/sources.lock.json` | Exact original revisions and repository identities for all five source inputs. |
 | `assembly/build-environment.lock.json` | Per-architecture builder digests, exact tool versions, and Python wheel URLs/hashes. |
 | `assembly/images.lock.json` | Shared runtime index/platform digests and explicitly selected legacy Kubernetes test images. |
@@ -100,6 +127,41 @@ failure, or a handled termination signal. If an uncatchable termination leaves a
 partial environment, the next session removes it before trying again.
 `make clean` also removes it. Repeating tooling checks, or running sync after
 tooling checks, does not require manual environment deletion.
+
+## Validation strategy
+
+The assembly is generated from upstream sources, so the maintained code can be
+hard to reason about by reading it alone. The deliberate response is to invest
+most of the verification effort in **checking the end state at each stage of the
+pipeline**, rather than only reasoning about the transformations. Every stage
+has a check that runs against its concrete output, and the checks are ordered so
+a failure is attributed to the earliest stage that caused it:
+
+1. **Inputs, before any work** — `assembly_sources.py`, `build_environment.py`,
+   and `image_inputs.py preflight` validate the lock files, builder digest, and
+   root Dockerfile. Bad inputs fail here, before existing outputs are touched.
+2. **Right after generating sources** — `sync.sh` rewrites imports and generates
+   `go.mod`/`vendor/`; `assembly_dependencies.py` then re-checks the resolved
+   repository/commit identity of each module (including csi-lib-utils) against
+   the lock, so a drifted source is caught before compilation.
+3. **Right after building binaries** — `make verify-entrypoints` builds native
+   `csi-sidecars` and `csi-attacher` binaries and exercises all attacher flags
+   through both CLIs, `--help`, and version stamping (see
+   [Dual-entrypoint compatibility checks](#dual-entrypoint-compatibility-checks)).
+4. **Right after building images** — `verify_artifacts.py images` inspects the
+   packaged executables, entrypoints, and help output of the built images
+   without a cluster or CSI socket (see [Image smoke checks](#image-smoke-checks)).
+5. **Full end-to-end** — the existing `release-tools/` e2e flow (`.prow.sh`)
+   deploys the generated images and runs CSI sanity plus the parallel/serial
+   suites against a kind cluster.
+
+Each layer has co-located Python regression tests (`scripts/*_test.py`) that run
+offline, so the checks themselves are exercised independently of a real assembly
+or container engine. When extending the tooling, prefer adding or strengthening
+an end-state check at the stage closest to the change over adding reasoning in
+comments; the earlier post-stage checks are cheap and keep failures attributable.
+The `release-tools/` e2e flow is the strongest end-state gate and is the natural
+place to modernize and add further post-build assertions over time.
 
 ## Updating source revisions
 

@@ -89,6 +89,7 @@ class ImageTests(unittest.TestCase):
         self.contents = b"expected snapshot-controller executable"
         (self.root / "bin" / self.command).write_bytes(self.contents)
         self.entrypoint = ["/snapshot-controller"]
+        self.cmd = None
         self.packaged = self.contents
         self.help = "  -retry-crd-interval-max duration\n"
         self.exit_code = "0"
@@ -103,7 +104,7 @@ class ImageTests(unittest.TestCase):
         operation = argv[1]
         output = ""
         if operation == "image":
-            output = json.dumps(self.entrypoint)
+            output = json.dumps(self.entrypoint) + "\n" + json.dumps(self.cmd)
         elif operation == "create":
             self.assertIn("--network=none", argv)
             self.assertEqual(argv[-1], "--help")
@@ -139,6 +140,12 @@ class ImageTests(unittest.TestCase):
     def test_rejects_aio_entrypoint_under_snapshot_tag(self):
         self.entrypoint = ["/csi-sidecars"]
         with self.assertRaisesRegex(ValueError, "expected entrypoint"):
+            self.verify_image()
+        self.assertEqual(len(self.calls), 1)
+
+    def test_rejects_default_command_overriding_the_entrypoint(self):
+        self.cmd = ["--leaked-default-arg"]
+        with self.assertRaisesRegex(ValueError, "unexpected default command"):
             self.verify_image()
         self.assertEqual(len(self.calls), 1)
 

@@ -54,6 +54,23 @@ def check_help(command, output):
     check_flags(command, output, [COMMAND_FLAGS[command]])
 
 
+def check_image_config(engine, command, image):
+    """Assert the whole end-state image config, not just the entrypoint.
+
+    The runtime image is the locked distroless base plus a single copied
+    binary, so the built image must expose exactly the command entrypoint and
+    carry no default CMD that could silently override it. Checking the full
+    config here keeps a tampered Dockerfile from passing the smoke test.
+    """
+    fmt = "{{json .Config.Entrypoint}}\n{{json .Config.Cmd}}"
+    result = run([*engine, "image", "inspect", "--format", fmt, image])
+    entrypoint, cmd = (json.loads(line) for line in result.stdout.splitlines())
+    if entrypoint != [f"/{command}"]:
+        raise ValueError(f"{image}: expected entrypoint /{command}, got {entrypoint!r}")
+    if cmd not in (None, []):
+        raise ValueError(f"{image}: unexpected default command {cmd!r}")
+
+
 # Exercise the same attacher configuration through both real entrypoints.
 # Keep help last so both flag parsers must validate every preceding argument.
 ATTACHER_ARGS = (
@@ -89,9 +106,7 @@ def verify_image(root, engine, command, tag):
     binary = root / "bin" / command
     if not binary.is_file():
         raise ValueError(f"Missing reference binary: {binary}; run make build first")
-    result = run([*engine, "image", "inspect", "--format", "{{json .Config.Entrypoint}}", image])
-    if json.loads(result.stdout) != [f"/{command}"]:
-        raise ValueError(f"{image}: expected entrypoint /{command}, got {result.stdout.strip()}")
+    check_image_config(engine, command, image)
 
     # Inspect the file without requiring a shell in the distroless image. Use
     # the same container for help, with networking disabled. Always remove it,

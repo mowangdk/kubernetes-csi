@@ -26,12 +26,21 @@ tools/
 │       ├── flags.go                # attacher flag registration
 │       └── flags_test.go
 ├── scripts/
-│   ├── sync.sh                     # sync script (formerly hack/do_sync.sh)
-│   ├── cleanup.sh                  # cleanup script (formerly hack/do_cleanup.sh)
-│   ├── retry-go-dependencies.sh     # bounded Go dependency transport retries
-│   ├── retry_go_dependencies_test.py # retry and checksum-safety regression tests
-│   ├── verify_artifacts.py         # dual-entrypoint CLI and image packaging checks
-│   └── verify_artifacts_test.py    # verifier regression tests
+│   ├── sync.sh                       # sync entrypoint (formerly hack/do_sync.sh)
+│   ├── cleanup.sh                    # cleanup script (formerly hack/do_cleanup.sh)
+│   ├── retry-go-dependencies.sh      # bounded Go dependency transport retries
+│   ├── isolated_sync.py              # run tooling checks or full assembly in the locked builder
+│   ├── assembly_sources.py           # exact upstream source selection
+│   ├── assembly_dependencies.py      # generate go.mod aligned on the selected Kubernetes release
+│   ├── build_environment.py          # select the locked Linux builder and hash-verified wheels
+│   ├── image_inputs.py               # lock runtime Dockerfiles and legacy test images
+│   ├── verify_artifacts.py           # dual-entrypoint CLI and image packaging checks
+│   └── *_test.py                     # regression tests for each script above
+│                                     #   (assembly_sources_test.py, assembly_dependencies_test.py,
+│                                     #    assembly_lifecycle_test.py, build_environment_test.py,
+│                                     #    deploy_test.py, image_inputs_test.py, isolated_sync_test.py,
+│                                     #    makefile_test.py, retry_go_dependencies_test.py,
+│                                     #    verify_artifacts_test.py)
 └── README.md
 ```
 
