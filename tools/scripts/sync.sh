@@ -392,6 +392,10 @@ symlink_from_root_to_tools tools/pkg/attacher/cmd/csi-attacher/config/flags_test
 python3 -B tools/scripts/assembly_dependencies.py seed --kubernetes "${UPDATE_KUBERNETES}"
 retry_go_dependencies go mod tidy
 retry_go_dependencies go mod vendor
+# Upstream ownership metadata belongs to the source repositories. If copied
+# into this repository, Prow treats it as local review policy and may reject
+# users who are valid only in those upstream repositories.
+find pkg -type f \( -name OWNERS -o -name OWNERS_ALIASES \) -delete
 export GOFLAGS="-mod=vendor"
 
 # checkpoint: test configuration and build/smoke-check both AIO and individual

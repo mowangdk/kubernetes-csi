@@ -1,10 +1,10 @@
 #! /bin/bash
 set -e
 
+# Build and test the generated sources committed with this checkout.
+python3 -B tools/scripts/ci.py check
 export GOWORK=off
-export PULL_BASE_REF=master
-# TODO: Replace this with the standard project image registry.
-export REGISTRY_NAME=ghcr.io/mauriciopoppe/csi-sidecars-aio-poc
+export PULL_BASE_REF=${PULL_BASE_REF:-main}
 
 HW_ARCH=$(uname -m)
 if [[ "${HW_ARCH}" == "aarch64" || "${HW_ARCH}" == "arm64" ]]; then
@@ -19,9 +19,10 @@ fi
 BUILD_PLATFORMS_MAKEFLAGS=${CSI_PROW_BUILD_PLATFORMS// /\\ }
 export MAKEFLAGS="${MAKEFLAGS:+${MAKEFLAGS} }BUILD_PLATFORMS=${BUILD_PLATFORMS_MAKEFLAGS}"
 
-# Keep local Prow builds aligned with the Cloud Build toolchain default.
-export CSI_PROW_GO_VERSION_BUILD="1.26.6"
-export CSI_PROW_GO_VERSION_E2E="1.26.6"
+# Use the same toolchain as the locked source assembly.
+CSI_PROW_GO_VERSION_BUILD=$(python3 -B tools/scripts/ci.py go-version)
+export CSI_PROW_GO_VERSION_BUILD
+export CSI_PROW_GO_VERSION_E2E="$CSI_PROW_GO_VERSION_BUILD"
 # This variable controls:
 # - The version to use in kind
 # - After pulling the k8s codebase, the tag to checkou to.
