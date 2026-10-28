@@ -40,6 +40,7 @@ Kubernetes cluster, replacing the paths with your configuration:
 ```bash
 ./bin/csi-sidecars \
   --controllers=attacher,provisioner,resizer,snapshotter \
+  --leader-election \
   --csi-address=/path/to/csi.sock \
   --kubeconfig=/path/to/kubeconfig
 ```
@@ -48,6 +49,8 @@ The enabled controllers require the corresponding driver capabilities and
 Kubernetes permissions; snapshot support also requires the snapshot CRDs and
 separate snapshot-controller. Multiple controllers cannot yet share
 `--http-endpoint` or `--metrics-address`.
+For a migration from individual sidecars, follow the stop-before-start and
+legacy Lease steps in the [deployment guide](deploy/README.md).
 
 Build and inspect local container images without publishing them:
 
